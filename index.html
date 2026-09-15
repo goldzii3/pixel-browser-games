@@ -1,0 +1,1124 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>地雷オセロ - 全10ステージ＆AI強化版</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="apple-touch-icon" href="icon.png">
+    <link rel="icon" type="image/png" href="icon.png">
+    <style>
+        body {
+            background-color: #0b0f19;
+            color: #f8fafc;
+            font-family: 'Inter', system-ui, -apple-system, sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            margin: 0;
+            padding: 1rem;
+            user-select: none;
+            overflow-x: hidden;
+        }
+
+        /* ゲーム本体コンテナ */
+        #game-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            background: rgba(30, 41, 59, 0.95);
+            padding: 1.25rem;
+            border-radius: 1.5rem;
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.8), 0 0 20px rgba(99, 102, 241, 0.15);
+            border: 1px solid #334155;
+            max-width: 95vw;
+            width: 480px;
+            position: relative;
+        }
+
+        /* Progress Bar */
+        .progress-container {
+            width: 100%;
+            background: #0f172a;
+            border-radius: 9999px;
+            height: 10px;
+            overflow: hidden;
+            border: 1px solid #334155;
+            margin-bottom: 0.75rem;
+        }
+        .progress-bar {
+            height: 100%;
+            background: linear-gradient(90deg, #38bdf8, #818cf8, #c084fc);
+            width: 10%;
+            transition: width 0.4s ease;
+            box-shadow: 0 0 10px rgba(56, 189, 248, 0.6);
+        }
+
+        /* Status & Banner Styles */
+        .phase-banner {
+            width: 100%;
+            background: linear-gradient(135deg, #1e1b4b, #312e81);
+            border: 1px solid #6366f1;
+            border-radius: 0.75rem;
+            padding: 0.6rem 0.8rem;
+            margin-bottom: 0.75rem;
+            text-align: center;
+            box-shadow: 0 4px 12px rgba(99, 102, 241, 0.2);
+        }
+
+        #scoreboard {
+            display: flex;
+            justify-content: space-between;
+            width: 100%;
+            margin-bottom: 0.75rem;
+            font-size: 1rem;
+            font-weight: bold;
+        }
+
+        .score-box {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 0.4rem 0.8rem;
+            border-radius: 0.75rem;
+            background: #0f172a;
+            box-shadow: inset 0 2px 4px rgba(0,0,0,0.5);
+            border: 2px solid transparent;
+            transition: all 0.3s ease;
+        }
+
+        .score-box.active-turn {
+            transform: scale(1.04);
+            box-shadow: 0 0 15px rgba(56, 189, 248, 0.5);
+            border-color: #38bdf8;
+        }
+
+        .disc-icon {
+            width: 18px;
+            height: 18px;
+            border-radius: 50%;
+            display: inline-block;
+        }
+        .disc-icon.black { background: #020617; border: 2px solid #475569; box-shadow: inset -2px -2px 4px rgba(255,255,255,0.2); }
+        .disc-icon.white { background: #f8fafc; border: 2px solid #cbd5e1; box-shadow: inset -2px -2px 4px rgba(0,0,0,0.3); }
+
+        /* Board CSS */
+        #board {
+            display: grid;
+            grid-template-columns: repeat(8, 1fr);
+            grid-template-rows: repeat(8, 1fr);
+            gap: 4px;
+            background-color: #0369a1;
+            padding: 8px;
+            border-radius: 12px;
+            width: 100%;
+            aspect-ratio: 1 / 1;
+            box-shadow: inset 0 0 20px rgba(0,0,0,0.8);
+            position: relative;
+        }
+
+        .cell {
+            background-color: #0f766e;
+            position: relative;
+            cursor: pointer;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            border-radius: 4px;
+            transition: background-color 0.2s, transform 0.1s;
+        }
+
+        .cell:hover {
+            background-color: #14b8a6;
+        }
+
+        /* Designated Mine Zone Highlight (Ring) */
+        .cell.mine-zone-highlight {
+            background-color: #0d9488;
+            box-shadow: inset 0 0 8px #f59e0b;
+            animation: pulseZone 2s infinite alternate;
+        }
+
+        @keyframes pulseZone {
+            0% { box-shadow: inset 0 0 4px #f59e0b; }
+            100% { box-shadow: inset 0 0 12px #fbbf24; }
+        }
+
+        /* Valid Move Hint */
+        .cell.valid-move::after {
+            content: '';
+            position: absolute;
+            width: 26%;
+            height: 26%;
+            background-color: rgba(255, 255, 255, 0.45);
+            border-radius: 50%;
+            pointer-events: none;
+            box-shadow: 0 0 8px rgba(255, 255, 255, 0.8);
+        }
+
+        /* Player Mine Translucent Bomb Marker */
+        .cell-mine-player::before {
+            content: '💣';
+            position: absolute;
+            font-size: 1.3rem;
+            opacity: 0.5;
+            z-index: 5;
+            pointer-events: none;
+            filter: drop-shadow(0 0 4px rgba(245, 158, 11, 0.8));
+        }
+
+        /* Detonated Mine Marker */
+        .cell-mine-detonated::before {
+            content: '💥';
+            position: absolute;
+            font-size: 1.5rem;
+            z-index: 15;
+            pointer-events: none;
+            animation: popIcon 0.5s ease-out;
+        }
+
+        @keyframes popIcon {
+            0% { transform: scale(0); }
+            50% { transform: scale(1.4); }
+            100% { transform: scale(1); }
+        }
+
+        /* Disc Styling & Flip Animations */
+        .disc {
+            width: 86%;
+            height: 86%;
+            border-radius: 50%;
+            position: absolute;
+            z-index: 10;
+            box-shadow: 2px 4px 8px rgba(0,0,0,0.6), inset -2px -2px 4px rgba(0,0,0,0.25);
+            transition: transform 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            transform-style: preserve-3d;
+        }
+
+        .disc.black {
+            background: radial-gradient(circle at 30% 30%, #334155, #020617);
+        }
+
+        .disc.white {
+            background: radial-gradient(circle at 30% 30%, #ffffff, #cbd5e1);
+        }
+
+        .disc.flip-to-white {
+            animation: flipToWhite 0.4s forwards;
+        }
+
+        .disc.flip-to-black {
+            animation: flipToBlack 0.4s forwards;
+        }
+
+        @keyframes flipToWhite {
+            0%   { transform: scale(1) rotateY(0deg); background: #020617; }
+            50%  { transform: scale(1.25) rotateY(90deg); background: #64748b; }
+            100% { transform: scale(1) rotateY(180deg); background: #ffffff; }
+        }
+
+        @keyframes flipToBlack {
+            0%   { transform: scale(1) rotateY(0deg); background: #ffffff; }
+            50%  { transform: scale(1.25) rotateY(-90deg); background: #64748b; }
+            100% { transform: scale(1) rotateY(-180deg); background: #020617; }
+        }
+
+        /* Explosion Sparks Particles & Screen Shake */
+        .shake-board {
+            animation: boardShake 0.5s cubic-bezier(.36,.07,.19,.97) both;
+        }
+
+        @keyframes boardShake {
+            10%, 90% { transform: translate3d(-2px, 0, 0); }
+            20%, 80% { transform: translate3d(4px, 0, 0); }
+            30%, 50%, 70% { transform: translate3d(-6px, 0, 0); }
+            40%, 60% { transform: translate3d(6px, 0, 0); }
+        }
+
+        .spark-particle {
+            position: absolute;
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            pointer-events: none;
+            z-index: 30;
+            animation: sparkFly 0.6s ease-out forwards;
+        }
+
+        @keyframes sparkFly {
+            0% {
+                opacity: 1;
+                transform: translate(0, 0) scale(1);
+            }
+            100% {
+                opacity: 0;
+                transform: translate(var(--dx), var(--dy)) scale(0.2);
+            }
+        }
+
+        /* Toast Notifications */
+        #toast {
+            position: absolute;
+            top: 10%;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(225, 29, 72, 0.95);
+            color: white;
+            padding: 8px 20px;
+            border-radius: 9999px;
+            font-weight: bold;
+            font-size: 0.95rem;
+            box-shadow: 0 10px 25px rgba(225, 29, 72, 0.5);
+            opacity: 0;
+            pointer-events: none;
+            z-index: 100;
+            transition: opacity 0.3s ease;
+            white-space: nowrap;
+        }
+
+        #toast.show {
+            opacity: 1;
+            animation: floatBanner 2.6s forwards;
+        }
+
+        @keyframes floatBanner {
+            0% { transform: translate(-50%, 0); opacity: 1; }
+            70% { transform: translate(-50%, -15px); opacity: 1; }
+            100% { transform: translate(-50%, -30px); opacity: 0; }
+        }
+
+        /* Modal Overlay */
+        #message-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(11, 15, 25, 0.9);
+            backdrop-filter: blur(8px);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 200;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.3s;
+        }
+
+        #message-overlay.show {
+            opacity: 1;
+            pointer-events: auto;
+        }
+
+        .message-box {
+            background: #1e293b;
+            border: 2px solid #334155;
+            color: #f8fafc;
+            padding: 2rem;
+            border-radius: 1.5rem;
+            text-align: center;
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.9);
+            transform: translateY(-20px);
+            transition: transform 0.3s;
+            max-width: 90vw;
+            width: 400px;
+        }
+
+        #message-overlay.show .message-box {
+            transform: translateY(0);
+        }
+
+        .btn {
+            padding: 0.75rem 1.25rem;
+            border-radius: 0.75rem;
+            font-weight: bold;
+            font-size: 0.95rem;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            border: none;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #0284c7, #2563eb);
+            color: white;
+            box-shadow: 0 4px 12px rgba(37, 99, 235, 0.4);
+        }
+
+        .btn-primary:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 16px rgba(37, 99, 235, 0.6);
+        }
+
+        .btn-emerald {
+            background: linear-gradient(135deg, #059669, #10b981);
+            color: white;
+            box-shadow: 0 4px 12px rgba(16, 185, 129, 0.4);
+        }
+
+        .btn-emerald:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 16px rgba(16, 185, 129, 0.6);
+        }
+
+        .btn-amber {
+            background: linear-gradient(135deg, #d97706, #b45309);
+            color: white;
+            box-shadow: 0 4px 12px rgba(217, 119, 6, 0.4);
+        }
+
+        .btn-amber:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 16px rgba(217, 119, 6, 0.6);
+        }
+
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none !important;
+        }
+
+        .difficulty-badge {
+            font-size: 0.7rem;
+            padding: 2px 8px;
+            border-radius: 9999px;
+            font-weight: 800;
+            letter-spacing: 0.05em;
+            display: inline-block;
+        }
+        .diff-easy { background: #06b6d4; color: #083344; }
+        .diff-normal { background: #10b981; color: #022c22; }
+        .diff-hard { background: #f59e0b; color: #451a03; }
+        .diff-legend { background: #ec4899; color: #500724; }
+    </style>
+</head>
+<body>
+
+    <div id="game-container">
+        <!-- Title & Stage Header -->
+        <div class="text-center mb-2 w-full">
+            <div class="flex items-center justify-between mb-1">
+                <h1 class="text-2xl font-black tracking-wider text-amber-400 flex items-center gap-1.5">
+                    <i class="fas fa-bomb text-rose-500 animate-bounce"></i> 地雷オセロ
+                </h1>
+                <div class="flex items-center gap-1.5">
+                    <span id="stage-display" class="font-extrabold text-sm text-sky-300">STAGE 1/10</span>
+                    <span id="diff-badge" class="difficulty-badge diff-easy">EASY</span>
+                </div>
+            </div>
+
+            <!-- Stage Progress Bar -->
+            <div class="progress-container">
+                <div id="progress-bar" class="progress-bar"></div>
+            </div>
+        </div>
+
+        <!-- Phase Info Banner -->
+        <div id="phase-banner" class="phase-banner">
+            <div id="phase-title" class="font-bold text-amber-300 text-sm mb-0.5">
+                <i class="fas fa-crosshairs mr-1"></i> 地雷配置フェーズ
+            </div>
+            <div id="phase-desc" class="text-xs text-slate-200">
+                黄色領域に地雷を <span id="mines-left-count" class="text-amber-400 font-bold text-sm">3</span> 個配置してください
+            </div>
+        </div>
+        
+        <!-- Scoreboard -->
+        <div id="scoreboard">
+            <div id="score-black" class="score-box active-turn">
+                <span class="disc-icon black"></span>
+                <span>You: <span id="count-black">2</span></span>
+            </div>
+            <div id="score-white" class="score-box">
+                <span class="disc-icon white"></span>
+                <span>CPU: <span id="count-white">2</span></span>
+            </div>
+        </div>
+
+        <!-- Othello Board Grid -->
+        <div id="board">
+            <!-- JavaScript dynamically populates 64 cells -->
+        </div>
+
+        <!-- Setup Phase Confirm Action Panel -->
+        <div id="setup-controls" class="w-full mt-3 flex justify-center gap-2">
+            <button id="confirm-mines-btn" class="btn btn-amber w-full" disabled>
+                <i class="fas fa-check-circle"></i> 地雷配置を確定する
+            </button>
+        </div>
+
+        <!-- Status display & Game Controls -->
+        <div id="game-controls" class="w-full mt-3 hidden flex-col items-center">
+            <div id="status-text" class="text-sm font-bold h-6 text-sky-400 text-center mb-1">
+                あなたの番です（黒）
+            </div>
+            <div class="flex w-full gap-2">
+                <button id="retry-stage-btn" class="btn btn-primary w-full text-xs py-2">
+                    <i class="fas fa-redo"></i> このステージをやり直す
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast Banner -->
+    <div id="toast">地雷爆発！</div>
+
+    <!-- Game Over / Stage Clear Overlay Modal -->
+    <div id="message-overlay">
+        <div class="message-box">
+            <div id="modal-icon" class="text-4xl mb-2">🎉</div>
+            <h2 id="end-title" class="text-2xl font-black mb-1 text-white">STAGE CLEAR</h2>
+            <p id="end-message" class="text-lg font-bold mb-3 text-emerald-400">Black wins!</p>
+            
+            <div class="flex justify-center gap-6 mb-5 p-3 bg-slate-800/80 rounded-xl">
+                <div class="font-bold text-base"><span class="disc-icon black mr-1 align-middle"></span> <span id="final-black">0</span></div>
+                <div class="font-bold text-base"><span class="disc-icon white mr-1 align-middle"></span> <span id="final-white">0</span></div>
+            </div>
+
+            <button id="modal-action-btn" class="btn btn-emerald w-full">
+                <i class="fas fa-play"></i> 次のステージへ
+            </button>
+        </div>
+    </div>
+
+    <script>
+        const BOARD_SIZE = 8;
+        const EMPTY = 0;
+        const BLACK = 1;  // Player
+        const WHITE = 2;  // CPU
+        const MAX_MINES = 3;
+        const TOTAL_STAGES = 10;
+
+        // Game Phases
+        const PHASE_SETUP = 'SETUP';
+        const PHASE_PLAYING = 'PLAYING';
+        const PHASE_GAMEOVER = 'GAMEOVER';
+
+        // Directions for Othello Flips [r_offset, c_offset]
+        const DIRECTIONS = [
+            [-1, -1], [-1, 0], [-1, 1],
+            [0, -1],           [0, 1],
+            [1, -1],  [1, 0],  [1, 1]
+        ];
+
+        // Othello Evaluation Matrix (Weight of each cell)
+        const EVAL_WEIGHTS = [
+            [100, -20,  10,   5,   5,  10, -20, 100],
+            [-20, -50,  -2,  -2,  -2,  -2, -50, -20],
+            [ 10,  -2,   3,   1,   1,   3,  -2,  10],
+            [  5,  -2,   1,   1,   1,   1,  -2,   5],
+            [  5,  -2,   1,   1,   1,   1,  -2,   5],
+            [ 10,  -2,   3,   1,   1,   3,  -2,  10],
+            [-20, -50,  -2,  -2,  -2,  -2, -50, -20],
+            [100, -20,  10,   5,   5,  10, -20, 100]
+        ];
+
+        // Stage Difficulty Definitions
+        const STAGE_CONFIGS = {
+            1:  { name: "EASY",   class: "diff-easy",   thinkTime: 1000, randomness: 0.40, mineCaution: 0 },
+            2:  { name: "EASY",   class: "diff-easy",   thinkTime: 1100, randomness: 0.30, mineCaution: 0 },
+            3:  { name: "NORMAL", class: "diff-normal", thinkTime: 1200, randomness: 0.20, mineCaution: 10 },
+            4:  { name: "NORMAL", class: "diff-normal", thinkTime: 1250, randomness: 0.15, mineCaution: 20 },
+            5:  { name: "NORMAL", class: "diff-normal", thinkTime: 1300, randomness: 0.10, mineCaution: 30 },
+            6:  { name: "HARD",   class: "diff-hard",   thinkTime: 1350, randomness: 0.05, mineCaution: 40 },
+            7:  { name: "HARD",   class: "diff-hard",   thinkTime: 1400, randomness: 0.02, mineCaution: 50 },
+            8:  { name: "HARD",   class: "diff-hard",   thinkTime: 1450, randomness: 0.00, mineCaution: 60 },
+            9:  { name: "LEGEND", class: "diff-legend", thinkTime: 1500, randomness: 0.00, mineCaution: 80 },
+            10: { name: "LEGEND", class: "diff-legend", thinkTime: 1600, randomness: 0.00, mineCaution: 100 }
+        };
+
+        // State Variables
+        let currentStage = 1;
+        let board = [];
+        let currentPhase = PHASE_SETUP;
+        let currentPlayer = BLACK;
+        let isAnimating = false;
+
+        // Mine Sets (stored as string keys "r,c")
+        let playerMines = new Set();
+        let cpuMines = new Set();
+        let detonatedMines = new Set();
+
+        // DOM Elements
+        const boardElement = document.getElementById('board');
+        const stageDisplay = document.getElementById('stage-display');
+        const diffBadge = document.getElementById('diff-badge');
+        const progressBar = document.getElementById('progress-bar');
+        const countBlackEl = document.getElementById('count-black');
+        const countWhiteEl = document.getElementById('count-white');
+        const scoreBlackBox = document.getElementById('score-black');
+        const scoreWhiteBox = document.getElementById('score-white');
+        const phaseTitle = document.getElementById('phase-title');
+        const phaseDesc = document.getElementById('phase-desc');
+        const minesLeftCount = document.getElementById('mines-left-count');
+        const setupControls = document.getElementById('setup-controls');
+        const confirmMinesBtn = document.getElementById('confirm-mines-btn');
+        const gameControls = document.getElementById('game-controls');
+        const statusText = document.getElementById('status-text');
+        const retryStageBtn = document.getElementById('retry-stage-btn');
+        const overlay = document.getElementById('message-overlay');
+        const modalIcon = document.getElementById('modal-icon');
+        const endTitle = document.getElementById('end-title');
+        const endMessage = document.getElementById('end-message');
+        const finalBlack = document.getElementById('final-black');
+        const finalWhite = document.getElementById('final-white');
+        const modalActionBtn = document.getElementById('modal-action-btn');
+        const toast = document.getElementById('toast');
+
+        // Designated Mine Placement Zone (1 step inside outer edge ring)
+        function isInMineZone(r, c) {
+            const isInnerArea = (r >= 1 && r <= 6 && c >= 1 && c <= 6);
+            const isRing = (r === 1 || r === 6 || c === 1 || c === 6);
+            return isInnerArea && isRing;
+        }
+
+        function initGame(stageNum = currentStage) {
+            currentStage = stageNum;
+            if (currentStage > TOTAL_STAGES) currentStage = 1;
+
+            // Reset board state
+            board = Array(BOARD_SIZE).fill(null).map(() => Array(BOARD_SIZE).fill(EMPTY));
+            
+            // Set initial center 4 pieces
+            const mid = BOARD_SIZE / 2;
+            board[mid - 1][mid - 1] = WHITE;
+            board[mid - 1][mid] = BLACK;
+            board[mid][mid - 1] = BLACK;
+            board[mid][mid] = WHITE;
+
+            currentPlayer = BLACK;
+            currentPhase = PHASE_SETUP;
+            isAnimating = false;
+            playerMines.clear();
+            cpuMines.clear();
+            detonatedMines.clear();
+
+            // Reset UI components
+            overlay.classList.remove('show');
+            setupControls.classList.remove('hidden');
+            setupControls.classList.add('flex');
+            gameControls.classList.add('hidden');
+            gameControls.classList.remove('flex');
+
+            updateStageHeader();
+            updateSetupUI();
+            createBoardDOM();
+            updateScores();
+        }
+
+        function updateStageHeader() {
+            const config = STAGE_CONFIGS[currentStage];
+            stageDisplay.innerText = `STAGE ${currentStage}/${TOTAL_STAGES}`;
+            diffBadge.innerText = config.name;
+            diffBadge.className = `difficulty-badge ${config.class}`;
+
+            const percent = (currentStage / TOTAL_STAGES) * 100;
+            progressBar.style.width = `${percent}%`;
+        }
+
+        function createBoardDOM() {
+            boardElement.innerHTML = '';
+            for (let r = 0; r < BOARD_SIZE; r++) {
+                for (let c = 0; c < BOARD_SIZE; c++) {
+                    const cell = document.createElement('div');
+                    cell.className = 'cell';
+                    cell.dataset.row = r;
+                    cell.dataset.col = c;
+
+                    // Highlight mine zone during setup
+                    if (currentPhase === PHASE_SETUP && isInMineZone(r, c)) {
+                        cell.classList.add('mine-zone-highlight');
+                    }
+
+                    cell.addEventListener('click', handleCellClick);
+                    
+                    if (board[r][c] !== EMPTY) {
+                        const disc = document.createElement('div');
+                        disc.className = `disc ${board[r][c] === BLACK ? 'black' : 'white'}`;
+                        cell.appendChild(disc);
+                    }
+                    
+                    boardElement.appendChild(cell);
+                }
+            }
+        }
+
+        function handleCellClick(e) {
+            if (isAnimating) return;
+
+            const target = e.currentTarget;
+            const r = parseInt(target.dataset.row);
+            const c = parseInt(target.dataset.col);
+            const key = `${r},${c}`;
+
+            // Phase 1: Mine Placement Phase
+            if (currentPhase === PHASE_SETUP) {
+                if (!isInMineZone(r, c)) {
+                    showToast("指定ゾーン（内側リング）にのみ配置できます！", "amber");
+                    return;
+                }
+                if (board[r][c] !== EMPTY) return;
+
+                if (playerMines.has(key)) {
+                    playerMines.delete(key);
+                    target.classList.remove('cell-mine-player');
+                } else {
+                    if (playerMines.size >= MAX_MINES) {
+                        showToast(`地雷は最大 ${MAX_MINES} 個までです！`, "amber");
+                        return;
+                    }
+                    playerMines.add(key);
+                    target.classList.add('cell-mine-player');
+                }
+                updateSetupUI();
+                return;
+            }
+
+            // Phase 2: Main Playing Phase
+            if (currentPhase === PHASE_PLAYING && currentPlayer === BLACK) {
+                const flips = getFlippableDiscs(r, c, BLACK);
+                if (flips.length > 0) {
+                    executeMove(r, c, BLACK, flips);
+                }
+            }
+        }
+
+        function updateSetupUI() {
+            const remaining = MAX_MINES - playerMines.size;
+            minesLeftCount.innerText = remaining;
+            confirmMinesBtn.disabled = playerMines.size !== MAX_MINES;
+            
+            phaseTitle.innerHTML = `<i class="fas fa-crosshairs mr-1"></i> 地雷配置フェーズ`;
+            phaseDesc.innerHTML = `黄色い領域に地雷を <span class="text-amber-400 font-bold text-sm">${remaining}</span> 個配置してください`;
+        }
+
+        function confirmPlayerMines() {
+            if (playerMines.size !== MAX_MINES) return;
+
+            // CPU places 3 mines randomly in the designated zone
+            const validZoneCells = [];
+            for (let r = 0; r < BOARD_SIZE; r++) {
+                for (let c = 0; c < BOARD_SIZE; c++) {
+                    if (isInMineZone(r, c) && board[r][c] === EMPTY) {
+                        validZoneCells.push(`${r},${c}`);
+                    }
+                }
+            }
+
+            // Shuffle & select 3
+            validZoneCells.sort(() => Math.random() - 0.5);
+            for (let i = 0; i < MAX_MINES; i++) {
+                cpuMines.add(validZoneCells[i]);
+            }
+
+            // Transition to Playing Phase
+            currentPhase = PHASE_PLAYING;
+            setupControls.classList.add('hidden');
+            setupControls.classList.remove('flex');
+            gameControls.classList.remove('hidden');
+            gameControls.classList.add('flex');
+
+            // Remove zone highlights from board
+            document.querySelectorAll('.cell').forEach(cell => cell.classList.remove('mine-zone-highlight'));
+
+            phaseTitle.innerHTML = `<i class="fas fa-bomb mr-1 text-rose-400"></i> 対局中 - 地雷アクティブ`;
+            phaseDesc.innerHTML = `相手の地雷を踏むと置いた石が奪われ、周囲に連鎖反転が起きます！`;
+
+            showToast(`Stage ${currentStage}: CPUが地雷をセット！対局開始`, "sky");
+            updateUI();
+        }
+
+        function isValidPos(r, c) {
+            return r >= 0 && r < BOARD_SIZE && c >= 0 && c < BOARD_SIZE;
+        }
+
+        function getFlippableDiscs(r, c, player) {
+            if (board[r][c] !== EMPTY) return [];
+
+            const opponent = player === BLACK ? WHITE : BLACK;
+            let flippable = [];
+
+            for (const [dr, dc] of DIRECTIONS) {
+                let currR = r + dr;
+                let currC = c + dc;
+                let tempFlippable = [];
+
+                while (isValidPos(currR, currC) && board[currR][currC] === opponent) {
+                    tempFlippable.push({r: currR, c: currC});
+                    currR += dr;
+                    currC += dc;
+                }
+
+                if (tempFlippable.length > 0 && isValidPos(currR, currC) && board[currR][currC] === player) {
+                    flippable = flippable.concat(tempFlippable);
+                }
+            }
+            return flippable;
+        }
+
+        function hasValidMove(player) {
+            for (let r = 0; r < BOARD_SIZE; r++) {
+                for (let c = 0; c < BOARD_SIZE; c++) {
+                    if (getFlippableDiscs(r, c, player).length > 0) {
+                        return true;
+                    }
+                }
+            }
+            return false;
+        }
+
+        async function executeMove(r, c, player, normalFlips) {
+            isAnimating = true;
+
+            const key = `${r},${c}`;
+            const opponent = player === BLACK ? WHITE : BLACK;
+            const opponentMines = player === BLACK ? cpuMines : playerMines;
+
+            // Check if player stepped on opponent's mine
+            const isOpponentMineStepped = opponentMines.has(key) && !detonatedMines.has(key);
+
+            let finalPlacedColor = player;
+            let actualFlips = [];
+
+            if (isOpponentMineStepped) {
+                // MINE DETONATED!
+                detonatedMines.add(key);
+                finalPlacedColor = opponent; // Placed disc captured by opponent
+
+                // Trigger Explosion Effects
+                triggerExplosionEffect(r, c);
+                showToast(`💥 ${player === BLACK ? "あなた" : "CPU"}が地雷を爆発させた！`, "rose");
+
+                board[r][c] = finalPlacedColor;
+
+                // Chain reaction: calculate flips for OPPONENT from explosion cell
+                actualFlips = getChainFlipsFromExplosion(r, c, finalPlacedColor);
+
+                const cellEl = document.querySelector(`.cell[data-row="${r}"][data-col="${c}"]`);
+                if (cellEl) cellEl.classList.add('cell-mine-detonated');
+            } else {
+                // Normal placement
+                board[r][c] = player;
+                actualFlips = normalFlips;
+            }
+
+            // Update internal matrix for flips
+            actualFlips.forEach(f => { board[f.r][f.c] = finalPlacedColor; });
+
+            // Render placed disc DOM
+            const cell = document.querySelector(`.cell[data-row="${r}"][data-col="${c}"]`);
+            const newDisc = document.createElement('div');
+            newDisc.className = `disc ${finalPlacedColor === BLACK ? 'black' : 'white'}`;
+            newDisc.style.transform = 'scale(0)';
+            cell.appendChild(newDisc);
+
+            requestAnimationFrame(() => {
+                newDisc.style.transition = 'transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275)';
+                newDisc.style.transform = 'scale(1)';
+            });
+
+            if (isOpponentMineStepped) {
+                await new Promise(res => setTimeout(res, 350));
+            }
+
+            await animateFlips(r, c, actualFlips, finalPlacedColor);
+
+            const scores = updateScores();
+            const totalDiscs = scores.bCount + scores.wCount;
+            const isWipeout = scores.bCount === 0 || scores.wCount === 0;
+            const isFullBoard = totalDiscs === BOARD_SIZE * BOARD_SIZE;
+
+            if (isWipeout || isFullBoard) {
+                isAnimating = true;
+                await new Promise(res => setTimeout(res, 700));
+                endGame();
+                return;
+            }
+
+            isAnimating = false;
+
+            // Turn & Pass Management
+            currentPlayer = player === BLACK ? WHITE : BLACK;
+
+            if (!hasValidMove(currentPlayer)) {
+                if (!hasValidMove(player)) {
+                    isAnimating = true;
+                    await new Promise(res => setTimeout(res, 700));
+                    endGame();
+                    return;
+                } else {
+                    showToast(`${currentPlayer === BLACK ? "You" : "CPU"} はパスしました`, "sky");
+                    currentPlayer = player;
+                }
+            }
+
+            updateUI();
+
+            // Trigger CPU Move if turn is WHITE (wait 1 second minimum after player turn)
+            if (currentPlayer === WHITE && currentPhase === PHASE_PLAYING) {
+                const config = STAGE_CONFIGS[currentStage];
+                const cpuDelay = Math.max(1000, config.thinkTime);
+                setTimeout(makeCPUMove, cpuDelay);
+            }
+        }
+
+        // Calculate chain reaction flips originating from explosion cell
+        function getChainFlipsFromExplosion(r, c, explodeOwnerColor) {
+            const flippable = [];
+            const otherColor = explodeOwnerColor === BLACK ? WHITE : BLACK;
+
+            for (const [dr, dc] of DIRECTIONS) {
+                let currR = r + dr;
+                let currC = c + dc;
+                let temp = [];
+
+                while (isValidPos(currR, currC) && board[currR][currC] === otherColor) {
+                    temp.push({r: currR, c: currC});
+                    currR += dr;
+                    currC += dc;
+                }
+
+                if (temp.length > 0 && isValidPos(currR, currC) && board[currR][currC] === explodeOwnerColor) {
+                    flippable.push(...temp);
+                }
+            }
+            return flippable;
+        }
+
+        function triggerExplosionEffect(r, c) {
+            const cell = document.querySelector(`.cell[data-row="${r}"][data-col="${c}"]`);
+            if (!cell) return;
+
+            boardElement.classList.add('shake-board');
+            setTimeout(() => boardElement.classList.remove('shake-board'), 500);
+
+            const sparkColors = ['#f97316', '#ef4444', '#eab308', '#ffffff'];
+            const particleCount = 20;
+
+            for (let i = 0; i < particleCount; i++) {
+                const spark = document.createElement('div');
+                spark.className = 'spark-particle';
+                const color = sparkColors[Math.floor(Math.random() * sparkColors.length)];
+                spark.style.backgroundColor = color;
+                spark.style.boxShadow = `0 0 6px ${color}`;
+
+                const angle = Math.random() * Math.PI * 2;
+                const distance = 40 + Math.random() * 60;
+                const dx = Math.cos(angle) * distance + 'px';
+                const dy = Math.sin(angle) * distance + 'px';
+
+                spark.style.setProperty('--dx', dx);
+                spark.style.setProperty('--dy', dy);
+
+                cell.appendChild(spark);
+                setTimeout(() => spark.remove(), 600);
+            }
+        }
+
+        function animateFlips(originR, originC, flips, player) {
+            flips.sort((a, b) => {
+                const distA = Math.abs(a.r - originR) + Math.abs(a.c - originC);
+                const distB = Math.abs(b.r - originR) + Math.abs(b.c - originC);
+                return distA - distB;
+            });
+
+            const animPromises = [];
+            const flipClass = player === BLACK ? 'flip-to-black' : 'flip-to-white';
+            const finalClass = player === BLACK ? 'black' : 'white';
+
+            for (let i = 0; i < flips.length; i++) {
+                const f = flips[i];
+                const fCell = document.querySelector(`.cell[data-row="${f.r}"][data-col="${f.c}"]`);
+                const fDisc = fCell ? fCell.querySelector('.disc') : null;
+                const delay = i * 80;
+
+                const p = new Promise(resolve => {
+                    setTimeout(() => {
+                        if (fDisc) {
+                            fDisc.className = 'disc';
+                            void fDisc.offsetWidth; // Force reflow
+                            fDisc.classList.add(flipClass);
+                            setTimeout(() => {
+                                fDisc.className = `disc ${finalClass}`;
+                                resolve();
+                            }, 400);
+                        } else {
+                            resolve();
+                        }
+                    }, delay);
+                });
+                animPromises.push(p);
+            }
+
+            return Promise.all(animPromises);
+        }
+
+        async function makeCPUMove() {
+            if (currentPlayer !== WHITE || isAnimating || currentPhase !== PHASE_PLAYING) return;
+
+            const validMoves = [];
+            for (let r = 0; r < BOARD_SIZE; r++) {
+                for (let c = 0; c < BOARD_SIZE; c++) {
+                    const flips = getFlippableDiscs(r, c, WHITE);
+                    if (flips.length > 0) {
+                        validMoves.push({ r, c, flips });
+                    }
+                }
+            }
+
+            if (validMoves.length === 0) return;
+
+            const config = STAGE_CONFIGS[currentStage];
+            let chosenMove = null;
+
+            if (Math.random() < config.randomness) {
+                chosenMove = validMoves[Math.floor(Math.random() * validMoves.length)];
+            } else {
+                let maxScore = -99999;
+                for (const move of validMoves) {
+                    const { r, c, flips } = move;
+                    const key = `${r},${c}`;
+                    
+                    let score = EVAL_WEIGHTS[r][c] + (flips.length * 3);
+
+                    if ((r === 0 || r === 7) && (c === 0 || c === 7)) {
+                        score += 150;
+                    }
+
+                    if (isInMineZone(r, c) && config.mineCaution > 0) {
+                        if (!detonatedMines.has(key)) {
+                            score -= config.mineCaution;
+                        }
+                    }
+
+                    if (score > maxScore) {
+                        maxScore = score;
+                        chosenMove = move;
+                    }
+                }
+            }
+
+            if (!chosenMove) {
+                chosenMove = validMoves[0];
+            }
+
+            await executeMove(chosenMove.r, chosenMove.c, WHITE, chosenMove.flips);
+        }
+
+        function updateUI() {
+            if (currentPhase !== PHASE_PLAYING) return;
+
+            if (currentPlayer === BLACK) {
+                scoreBlackBox.classList.add('active-turn');
+                scoreWhiteBox.classList.remove('active-turn');
+                statusText.innerText = "あなたの番です（黒）";
+                statusText.style.color = "#38bdf8";
+            } else {
+                scoreWhiteBox.classList.add('active-turn');
+                scoreBlackBox.classList.remove('active-turn');
+                statusText.innerText = "CPU思考中（白）...";
+                statusText.style.color = "#f43f5e";
+            }
+
+            document.querySelectorAll('.cell').forEach(cell => cell.classList.remove('valid-move'));
+
+            if (currentPlayer === BLACK && !isAnimating) {
+                for (let r = 0; r < BOARD_SIZE; r++) {
+                    for (let c = 0; c < BOARD_SIZE; c++) {
+                        if (getFlippableDiscs(r, c, BLACK).length > 0) {
+                            const cell = document.querySelector(`.cell[data-row="${r}"][data-col="${c}"]`);
+                            if (cell) cell.classList.add('valid-move');
+                        }
+                    }
+                }
+            }
+            updateScores();
+        }
+
+        function updateScores() {
+            let bCount = 0;
+            let wCount = 0;
+            for (let r = 0; r < BOARD_SIZE; r++) {
+                for (let c = 0; c < BOARD_SIZE; c++) {
+                    if (board[r][c] === BLACK) bCount++;
+                    else if (board[r][c] === WHITE) wCount++;
+                }
+            }
+            countBlackEl.innerText = bCount;
+            countWhiteEl.innerText = wCount;
+            return { bCount, wCount };
+        }
+
+        function showToast(msg, color = "rose") {
+            toast.innerText = msg;
+            toast.style.background = color === "amber" 
+                ? "rgba(217, 119, 6, 0.95)" 
+                : color === "sky" 
+                ? "rgba(2, 132, 199, 0.95)" 
+                : "rgba(225, 29, 72, 0.95)";
+
+            toast.classList.remove('show');
+            void toast.offsetWidth;
+            toast.classList.add('show');
+        }
+
+        function endGame() {
+            currentPhase = PHASE_GAMEOVER;
+            statusText.innerText = "対局終了！";
+            statusText.style.color = "#f8fafc";
+
+            scoreBlackBox.classList.remove('active-turn');
+            scoreWhiteBox.classList.remove('active-turn');
+
+            const scores = updateScores();
+            finalBlack.innerText = scores.bCount;
+            finalWhite.innerText = scores.wCount;
+
+            const isPlayerWin = scores.bCount > scores.wCount;
+            const isDraw = scores.bCount === scores.wCount;
+
+            if (isPlayerWin) {
+                if (currentStage >= TOTAL_STAGES) {
+                    modalIcon.innerText = "👑";
+                    endTitle.innerText = "ALL STAGES CLEARED!";
+                    endMessage.innerText = "全10ステージ完全制覇！おめでとうございます！";
+                    endMessage.className = "text-lg font-bold mb-3 text-amber-400";
+                    modalActionBtn.innerHTML = '<i class="fas fa-trophy"></i> 最初から挑戦する';
+                    modalActionBtn.className = "btn btn-amber w-full";
+                    modalActionBtn.onclick = () => initGame(1);
+                } else {
+                    modalIcon.innerText = "🎉";
+                    endTitle.innerText = `STAGE ${currentStage} CLEAR!`;
+                    endMessage.innerText = `勝利！ 次のステージ（Stage ${currentStage + 1}）が解放されました`;
+                    endMessage.className = "text-lg font-bold mb-3 text-emerald-400";
+                    modalActionBtn.innerHTML = '<i class="fas fa-play"></i> 次のステージへ';
+                    modalActionBtn.className = "btn btn-emerald w-full";
+                    modalActionBtn.onclick = () => initGame(currentStage + 1);
+                }
+            } else {
+                modalIcon.innerText = isDraw ? "🤝" : "💀";
+                endTitle.innerText = isDraw ? "DRAW GAME" : "GAME OVER";
+                endMessage.innerText = isDraw ? "引き分けです！もう一度挑戦しよう" : "CPUに敗北しました...";
+                endMessage.className = isDraw ? "text-lg font-bold mb-3 text-amber-400" : "text-lg font-bold mb-3 text-rose-500";
+                modalActionBtn.innerHTML = '<i class="fas fa-redo"></i> このステージをやり直す';
+                modalActionBtn.className = "btn btn-primary w-full";
+                modalActionBtn.onclick = () => initGame(currentStage);
+            }
+
+            setTimeout(() => {
+                overlay.classList.add('show');
+            }, 600);
+        }
+
+        // Event Listeners
+        confirmMinesBtn.addEventListener('click', confirmPlayerMines);
+        retryStageBtn.addEventListener('click', () => initGame(currentStage));
+
+        // Start game on window load
+        window.onload = () => initGame(1);
+    </script>
+</body>
+</html>
